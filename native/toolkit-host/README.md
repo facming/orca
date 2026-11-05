@@ -1,33 +1,35 @@
-# Toolkit Host channel preparation
+# Toolkit Host channel and authority
 
-This opt-in N-API binding creates an AF_UNIX/SOCK_STREAM pair **inside the calling
-process**. It is not an authentication mechanism or an enabled Host API. Do not
-load it in a plugin worker or enroll a generic Node/Electron interpreter.
+The N-API binding creates an AF_UNIX/SOCK_STREAM pair inside the calling main
+process. It is a transport primitive, not authentication. The dedicated
+`src/main/toolkit` loader admits sealed resources before loading the binding and
+Toolkit adapter. The service independently authenticates both native peers.
 
-For a disposable macOS development build (no app installation):
+`createSocketPair()` transfers `{ hostFd, bridgeFd }` to main. `net.Socket` owns
+hostFd; the adapter passes bridgeFd as child stdio[3], closes the parent copy, and
+holds the Host endpoint through completion. Both FDs start close-on-exec. All
+error, timeout and revoke paths close descriptors. Do not expose the factory,
+FDs or Bridge path to plugins; do not enroll generic Node/Electron interpreters.
+
+For a disposable macOS build, use repository-pinned Node 24.22.1 and headers:
 
 ```sh
-cc -Wall -Wextra -Werror -bundle -undefined dynamic_lookup \
-  -I/opt/homebrew/include/node native/toolkit-host/socketpair.c \
-  -o /tmp/toolkit-host-socketpair.node
+node native/toolkit-host/stage.mjs ../orca-tools /tmp/orca-stage/toolkit-host /path/to/pinned/bin/node /path/to/pinned/include/node
+ORCA_BACKGROUND_LAUNCH=1 node native/toolkit-host/smoke-worker.mjs /tmp/orca-stage
 ```
 
-Use headers matching the target Node/Electron N-API runtime in release builds.
-The binding was tested with Node 20 and the repository-pinned Node 24.22.1 on
-arm64, not a packaged Electron application. The non-macOS implementation refuses calls.
+The output directory must not exist. Staging verifies the Node executable hash,
+compiles the addon, copies the closed Toolkit dependency set, and generates the
+Host panel/preload and manifest. It installs nothing. `ORCA_TOOLKIT_HOST_STAGE`
+is an optional electron-builder input, never a runtime admission override.
+Nested signing changes bytes: regenerate the manifest after nested signing and
+before the outer application seal; release pipeline integration remains open.
 
-`createSocketPair()` transfers ownership of `{ hostFd, bridgeFd }` to main. Wrap
-`hostFd` in `net.Socket`; pass `bridgeFd` as child `stdio[3]`, then close the
-parent's bridge descriptor immediately after spawning. Both descriptors start
-close-on-exec. Keep the Host endpoint and process alive until the complete reply
-or bounded failure. Close both descriptors on every constructor/spawn error.
-Never expose descriptors, the factory, or the Bridge executable path to plugins.
+The smoke runs an actual ordinary worker using the separate Node executable and
+checks IPC, commands, absent RUN_AS_NODE env and private API discovery denial.
+The production loader refuses user-writable staging directories and permissive
+main-runtime fuses. Non-macOS native calls fail closed.
 
-The companion adapter is `plugins/toolkit/config-service/host-handler.cjs` in
-[orca-tools](https://github.com/facming/orca-tools/pull/15). It defaults to failure
-without this factory. The production Bridge accepts only the explicit fd 3 and
-forwards it unchanged with SCM_RIGHTS. See
-[the design](../../docs/toolkit-host-api-design.md) for the required sealed-session
-router, signing/runtime separation, enrollment, and release gates. No public
-method registry, worker environment, fuse, entitlement, or installed app is
-changed by this preparation.
+See [implementation, tests and remaining risks](../../docs/toolkit-host-7b7.md).
+Formal signing, complete runtime separation and real cross-UID acceptance remain
+**RELEASE BLOCKED**. No production enrollment is enabled by staging.

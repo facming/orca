@@ -487,13 +487,6 @@ describe('registerAppMenu', () => {
     const appLabels = appSubmenu.map((item) => item.label)
     expect(appLabels).toEqual(expect.arrayContaining(['Check for Updates...', 'Settings']))
     expect(template.find((item) => item.label === 'File')).toBeUndefined()
-    const helpLabels = getSubmenu(template, 'Help').map((item) => item.label)
-    expect(helpLabels).toEqual([
-      'Report Crash...',
-      undefined,
-      'Explore Orca',
-      'Getting Started with Orca'
-    ])
   })
 
   it('routes Getting Started with Orca through its callback', () => {

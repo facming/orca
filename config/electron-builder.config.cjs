@@ -602,6 +602,9 @@ module.exports = {
     extraResources: [
       ...commonExtraResources,
       ...createPackagedRuntimeNodeModuleResources('darwin'),
+      ...(process.env.ORCA_TOOLKIT_HOST_STAGE
+        ? [{ from: process.env.ORCA_TOOLKIT_HOST_STAGE, to: 'toolkit-host' }]
+        : []),
       macSpeechNativeResource,
       {
         from: 'resources/darwin/bin/orca',
