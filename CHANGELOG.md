@@ -1,3 +1,11 @@
+## 2026-11-06 — macOS workbench and Unity 6000.5 API adapter 7B-13 (RELEASE BLOCKED)
+
+- Align the validated TextEdit edit command across Host and Bridge; test actual background application launch.
+- Add conditional Unity 6000.5.4f1 EntityId/string protocol and real installed-API compilation; retain exact version and graphics checks. Full Editor integration is blocked by the local headless license, with a reproducible disposable-project runner.
+- Fix official Blender LTS version detection; verify real Blender 5.2.3 CPU/Metal rendering, scene operations and import/export in disposable projects.
+- Add Blender/Godot application selection and qualification, imported workflow revision/update/delete/restore, bounded PNG previews, artifact export and explicit downloaded-resource copies.
+- Extend hidden Host/real loopback regression and distinguish synthetic engines from actual macOS launch/compiler evidence. See [feature checklist and risks](docs/toolkit-host-7b13.md) and [test evidence](docs/toolkit-host-7b13-validation.txt).
+
 ## 2026-11-06 — Toolkit macOS workbench 7B-12 (Draft / RELEASE BLOCKED)
 
 - Add a Project workbench Host menu and strict finite project/task/workflow command schemas; preserve exact-window/main-frame authority.
