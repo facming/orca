@@ -189,6 +189,7 @@ export function createToolkitDownloads(
       return manager.action(command.id, command.action)
     }
     return {
+      targetKey,
       jobs: manager.list(),
       recovery: manager.recovery ?? [],
       enabled: settings.downloads.enabled,

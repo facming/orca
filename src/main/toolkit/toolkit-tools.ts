@@ -50,11 +50,19 @@ export function createToolkitTools(authority: ToolkitAuthority, root: string) {
     readSettings,
     dataDir: join(app.getPath('home'), 'Library/Application Support/OrcaTools')
   })
+  let accountMutation = false
   let closed = false
   let tail: Promise<unknown> = Promise.resolve()
   return {
     call(input: unknown) {
       const command = commands.parse(input)
+      const mutation = ['accounts-select', 'accounts-disable'].includes(command.operation)
+      if (mutation && accountMutation) {
+        return Promise.reject(new Error('An account change is in progress. Refresh shortly.'))
+      }
+      if (mutation) {
+        accountMutation = true
+      }
       const result = tail.then(async () => {
         if (closed) {
           throw new Error('Toolkit session revoked')
@@ -134,6 +142,13 @@ export function createToolkitTools(authority: ToolkitAuthority, root: string) {
         }
         return service.call(command)
       })
+      if (mutation) {
+        void result
+          .finally(() => {
+            accountMutation = false
+          })
+          .catch(() => undefined)
+      }
       tail = result.catch(() => undefined)
       return result
     },

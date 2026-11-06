@@ -79,7 +79,7 @@ export async function createToolkitMaintenanceWindow(
       contextIsolation: true,
       nodeIntegration: false,
       devTools: false,
-      partition: 'toolkit-configuration'
+      partition: 'persist:toolkit-configuration'
     }
   })
   window = panel
