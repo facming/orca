@@ -37,7 +37,7 @@ const commandSchema = z.discriminatedUnion('operation', [
     .object({
       operation: z.literal('action'),
       id: z.string().regex(/^[a-f0-9]{32}$/),
-      action: z.enum(['pause', 'resume', 'cancel', 'cleanup'])
+      action: z.enum(['pause', 'resume', 'cancel', 'cleanup', 'verify'])
     })
     .strict()
 ])
