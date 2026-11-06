@@ -56,6 +56,10 @@ export async function maintenanceState(input: unknown, legacyJobs: string) {
   }
   return {
     ...status,
+    task_inventory: {
+      state: status.task_inventory.state,
+      tasks: status.task_inventory.tasks.map(({ task_id, released }) => ({ task_id, released }))
+    },
     maintenance: {
       targetChange: !reason,
       confirm: !reason && status.state === 'migration-pending',

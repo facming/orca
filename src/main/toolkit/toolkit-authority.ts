@@ -101,7 +101,9 @@ export class ToolkitAuthority {
       envelope = { version: 1, request: this.adapter.validate(candidate.request) }
       if (
         !(record.task
-          ? ['read', 'status', 'task-create', 'task-update'].includes(envelope.request.op)
+          ? ['read', 'status', 'task-create', 'task-update', 'task-claim', 'task-adopt'].includes(
+              envelope.request.op
+            )
           : operations.has(envelope.request.op))
       ) {
         return denied()

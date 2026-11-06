@@ -71,7 +71,7 @@ export class ToolkitTasks {
     return this.#abort.signal
   }
 
-  create(expectedTarget?: z.infer<typeof targetSchema>): Promise<TaskHandle> {
+  create(expectedTarget?: z.infer<typeof targetSchema>, taskId?: string): Promise<TaskHandle> {
     return this.#serial(async () => {
       if (!this.#pendingCreate) {
         const snapshot = z
@@ -94,7 +94,7 @@ export class ToolkitTasks {
         ) {
           throw new Error('Download target changed; reload before creating a task')
         }
-        const id = randomUUID().replaceAll('-', '')
+        const id = taskId ?? randomUUID().replaceAll('-', '')
         const request = {
           op: 'task-create',
           request_id: randomUUID(),
@@ -107,6 +107,9 @@ export class ToolkitTasks {
         this.#pendingCreate = { request, id, storeId: snapshot.store_id }
       }
       const { request, id, storeId } = this.#pendingCreate
+      if (taskId && taskId !== id) {
+        throw new Error('Previous creation must be reconciled first')
+      }
       if (
         expectedTarget &&
         JSON.stringify(targetSchema.parse(expectedTarget)) !== JSON.stringify(request.target)
@@ -117,6 +120,63 @@ export class ToolkitTasks {
       const handle = Object.freeze({ id })
       this.#tasks.set(handle, { record, storeId })
       this.#pendingCreate = undefined
+      return handle
+    })
+  }
+
+  inventory() {
+    return this.#serial(async () =>
+      z
+        .object({
+          store_id: z.string(),
+          epoch: z.string(),
+          task_inventory: z.object({ state: z.string(), tasks: z.array(taskSchema) }),
+          target_leases: z.array(z.object({ task_id: z.string(), target: targetSchema }))
+        })
+        .parse(await this.#request({ op: 'status' }))
+    )
+  }
+
+  claim(record: TaskRecord, storeId: string): Promise<TaskHandle> {
+    return this.#serial(async () => {
+      const result = taskSchema.parse(
+        await this.#request({
+          op: 'task-claim',
+          request_id: randomUUID(),
+          task_id: record.task_id,
+          owner: this.#owner,
+          previous_owner: record.owner,
+          epoch: record.epoch,
+          store_id: storeId,
+          revision: record.revision
+        })
+      )
+      const handle = Object.freeze({ id: record.task_id })
+      this.#tasks.set(handle, { record: result, storeId })
+      return handle
+    })
+  }
+
+  adopt(
+    id: string,
+    target: z.infer<typeof targetSchema>,
+    storeId: string,
+    epoch: string
+  ): Promise<TaskHandle> {
+    return this.#serial(async () => {
+      const record = taskSchema.parse(
+        await this.#request({
+          op: 'task-adopt',
+          request_id: randomUUID(),
+          task_id: id,
+          target,
+          owner: this.#owner,
+          store_id: storeId,
+          epoch
+        })
+      )
+      const handle = Object.freeze({ id })
+      this.#tasks.set(handle, { record, storeId })
       return handle
     })
   }

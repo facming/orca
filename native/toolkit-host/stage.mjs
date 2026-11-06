@@ -36,6 +36,14 @@ function put(name, bytes) {
 }
 for (const name of [
   'config-service/host-handler.cjs',
+  'config-service/client.cjs',
+  'modules/downloads/host-entry.cjs',
+  'modules/downloads/engine.cjs',
+  'modules/downloads/v3.cjs',
+  'modules/downloads/transport.cjs',
+  'modules/downloads/local-state.cjs',
+  'modules/downloads/settings.cjs',
+  'modules/downloads/projects.cjs',
   'config-service/commands.cjs',
   'platform/errors.cjs'
 ]) {
@@ -54,11 +62,13 @@ put(
 put(
   'preload.cjs',
   `const {contextBridge,ipcRenderer}=require('electron');
+const ready=new Promise(resolve=>ipcRenderer.once('toolkit:ready:v1',resolve));
 contextBridge.exposeInMainWorld('orcaToolkitConfiguration',{call(input){
  if(!input||typeof input!=='object'||Array.isArray(input)||Object.hasOwn(input,'op'))throw new Error('Invalid configuration command');
  const {operation='status',...args}=input;
- return ipcRenderer.invoke('toolkit:configuration:v1',{version:1,request:{op:operation==='confirm'?'import':operation,...args}});
-}});\n`
+ return ready.then(()=>ipcRenderer.invoke('toolkit:configuration:v1',{version:1,request:{op:operation==='confirm'?'import':operation,...args}}));
+}});
+contextBridge.exposeInMainWorld('orcaToolkitDownloads',{call(input){return ready.then(()=>ipcRenderer.invoke('toolkit:downloads:v1',input));}});\n`
 )
 execFileSync('/usr/bin/cc', [
   '-Wall',

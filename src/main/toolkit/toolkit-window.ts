@@ -2,10 +2,11 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { loadToolkitAuthority } from './toolkit-bundle'
-import type { ConfigurationRequest } from './toolkit-authority'
+import type { ConfigurationRequest, ToolkitAuthority } from './toolkit-authority'
 import { maintenanceState } from './toolkit-maintenance'
 import { TOOLKIT_CONFIGURATION_METHOD } from './toolkit-authority'
 import { createMaintenanceApproval } from './toolkit-maintenance-approval'
+import { createToolkitDownloads } from './toolkit-downloads'
 import { createToolkitPanelContext } from './toolkit-panel-context'
 
 let window: BrowserWindow | undefined
@@ -27,109 +28,7 @@ export async function openToolkitConfiguration(): Promise<void> {
       throw new Error('RELEASE BLOCKED: a sealed packaged Host is required')
     }
     const { authority, root } = await loadToolkitAuthority(process.resourcesPath)
-    let inventoryContext: ReturnType<typeof authority.openContext> | undefined
-    const inspect = async () => {
-      const reply = await authority.call(
-        inventoryContext,
-        TOOLKIT_CONFIGURATION_METHOD,
-        { version: 1, request: { op: 'status' } },
-        async () => true
-      )
-      if (!reply.ok) {
-        throw new Error(reply.error)
-      }
-      return maintenanceState(
-        reply.result,
-        join(app.getPath('home'), 'Library/Application Support/OrcaTools/downloads/jobs')
-      )
-    }
-    const panelURL = pathToFileURL(join(root, 'panel.html')).href
-    const panel = new BrowserWindow({
-      title: 'Toolkit configuration',
-      show: false,
-      webPreferences: {
-        preload: join(root, 'preload.cjs'),
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        devTools: false,
-        partition: 'toolkit-configuration'
-      }
-    })
-    window = panel
-    let context: ReturnType<typeof createToolkitPanelContext> | undefined
-    let preview: Record<string, unknown> | undefined
-    const revoke = (): void => {
-      authority.revokeAll()
-      context = undefined
-      inventoryContext = undefined
-      preview = undefined
-    }
-    const active = (): boolean =>
-      !panel.isDestroyed() &&
-      !panel.webContents.isDestroyed() &&
-      panel.webContents.getURL() === panelURL
-    panel.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-    panel.webContents.on('will-navigate', (event) => {
-      event.preventDefault()
-      revoke()
-    })
-    panel.webContents.on('will-attach-webview', (event) => event.preventDefault())
-    panel.webContents.on('did-start-navigation', revoke)
-    panel.webContents.on('render-process-gone', revoke)
-    panel.webContents.once('did-finish-load', () => {
-      if (active()) {
-        inventoryContext = authority.openContext(true)
-        context = createToolkitPanelContext(
-          authority,
-          panel.webContents,
-          panelURL,
-          createMaintenanceApproval(
-            inspect,
-            (request) => approve(panel, request),
-            (request) =>
-              !!preview &&
-              request.preview_id === preview.preview_id &&
-              JSON.stringify(request.hashes) === JSON.stringify(preview.hashes)
-          )
-        )
-      }
-    })
-    panel.once('closed', () => {
-      revoke()
-      ipcMain.removeHandler(channel)
-      app.removeListener('before-quit', revoke)
-      window = undefined
-    })
-    app.once('before-quit', revoke)
-    ipcMain.handle(channel, async (event, input: unknown) => {
-      if (
-        !context ||
-        !active() ||
-        event.sender !== panel.webContents ||
-        event.senderFrame !== panel.webContents.mainFrame ||
-        event.senderFrame.url !== panelURL
-      ) {
-        throw new Error('Unauthorized Toolkit source')
-      }
-      const reply = await context.call(event, input)
-      if (reply.ok && typeof reply.result?.preview_id === 'string') {
-        preview = reply.result
-      }
-      if (!reply.ok) {
-        throw new Error(reply.error)
-      }
-      if (reply.result?.state && !reply.result.raw_json) {
-        return inspect()
-      }
-      return reply.result
-    })
-    try {
-      await panel.loadURL(panelURL)
-    } catch (error) {
-      panel.destroy()
-      throw error
-    }
+    const panel = await createToolkitMaintenanceWindow(authority, root)
     // This window is opened only by a user menu action; automated/background launches return above.
     panel.show()
   } catch {
@@ -142,6 +41,134 @@ export async function openToolkitConfiguration(): Promise<void> {
   } finally {
     opening = false
   }
+}
+
+export async function createToolkitMaintenanceWindow(
+  authority: ToolkitAuthority,
+  root: string
+): Promise<BrowserWindow> {
+  let inventoryContext: ReturnType<typeof authority.openContext> | undefined
+  const inspect = async () => {
+    const reply = await authority.call(
+      inventoryContext,
+      TOOLKIT_CONFIGURATION_METHOD,
+      { version: 1, request: { op: 'status' } },
+      async () => true
+    )
+    if (!reply.ok) {
+      throw new Error(reply.error)
+    }
+    return maintenanceState(
+      reply.result,
+      join(app.getPath('home'), 'Library/Application Support/OrcaTools/downloads/jobs')
+    )
+  }
+  const panelURL = pathToFileURL(join(root, 'panel.html')).href
+  const panel = new BrowserWindow({
+    title: 'Toolkit configuration',
+    show: false,
+    webPreferences: {
+      preload: join(root, 'preload.cjs'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: false,
+      partition: 'toolkit-configuration'
+    }
+  })
+  window = panel
+  let downloads: ReturnType<typeof createToolkitDownloads> | undefined
+  let context: ReturnType<typeof createToolkitPanelContext> | undefined
+  let preview: Record<string, unknown> | undefined
+  const revoke = (): void => {
+    void downloads?.close().catch(() => undefined)
+    downloads = undefined
+    authority.revokeAll()
+    context = undefined
+    inventoryContext = undefined
+    preview = undefined
+  }
+  const active = (): boolean =>
+    !panel.isDestroyed() &&
+    !panel.webContents.isDestroyed() &&
+    panel.webContents.getURL() === panelURL
+  panel.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  panel.webContents.on('will-navigate', (event) => {
+    event.preventDefault()
+    revoke()
+  })
+  panel.webContents.on('will-attach-webview', (event) => event.preventDefault())
+  panel.webContents.on('did-start-navigation', revoke)
+  panel.webContents.on('render-process-gone', revoke)
+  panel.webContents.once('did-finish-load', () => {
+    if (active()) {
+      downloads = createToolkitDownloads(authority, root, panel)
+      inventoryContext = authority.openContext(true)
+      context = createToolkitPanelContext(
+        authority,
+        panel.webContents,
+        panelURL,
+        createMaintenanceApproval(
+          inspect,
+          (request) => approve(panel, request),
+          (request) =>
+            !!preview &&
+            request.preview_id === preview.preview_id &&
+            JSON.stringify(request.hashes) === JSON.stringify(preview.hashes)
+        )
+      )
+      panel.webContents.send('toolkit:ready:v1')
+    }
+  })
+  panel.once('closed', () => {
+    revoke()
+    ipcMain.removeHandler(channel)
+    ipcMain.removeHandler('toolkit:downloads:v1')
+    app.removeListener('before-quit', revoke)
+    window = undefined
+  })
+  app.once('before-quit', revoke)
+  ipcMain.handle('toolkit:downloads:v1', async (event, input: unknown) => {
+    if (
+      !downloads ||
+      !active() ||
+      event.sender !== panel.webContents ||
+      event.senderFrame !== panel.webContents.mainFrame ||
+      event.senderFrame.url !== panelURL
+    ) {
+      throw new Error('Unauthorized Toolkit download source')
+    }
+    return downloads.call(input)
+  })
+  ipcMain.handle(channel, async (event, input: unknown) => {
+    if (
+      !context ||
+      !active() ||
+      event.sender !== panel.webContents ||
+      event.senderFrame !== panel.webContents.mainFrame ||
+      event.senderFrame.url !== panelURL
+    ) {
+      throw new Error('Unauthorized Toolkit source')
+    }
+    const reply = await context.call(event, input)
+    if (reply.ok && typeof reply.result?.preview_id === 'string') {
+      preview = reply.result
+    }
+    if (!reply.ok) {
+      throw new Error(reply.error)
+    }
+    if (reply.result?.state && !reply.result.raw_json) {
+      return inspect()
+    }
+    return reply.result
+  })
+  try {
+    await panel.loadURL(panelURL)
+  } catch (error) {
+    panel.destroy()
+    throw error
+  }
+  return panel
 }
 
 async function approve(panel: BrowserWindow, request: ConfigurationRequest): Promise<boolean> {
