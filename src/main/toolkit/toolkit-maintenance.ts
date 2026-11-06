@@ -1,4 +1,5 @@
 import { readdir, lstat } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
 import { z } from 'zod'
 import type { ConfigurationRequest } from './toolkit-authority'
 
@@ -52,6 +53,18 @@ export async function maintenanceState(input: unknown, legacyJobs: string) {
   } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
       reason = 'Download inventory could not be verified.'
+    }
+  }
+  try {
+    const keys = join(dirname(legacyJobs), 'keys')
+    const info = await lstat(keys)
+    if (!info.isDirectory() || info.isSymbolicLink() || (await readdir(keys)).length) {
+      reason =
+        'Local download keys require verified cleanup before changing the target or restoring.'
+    }
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+      reason = 'Download key inventory could not be verified.'
     }
   }
   return {

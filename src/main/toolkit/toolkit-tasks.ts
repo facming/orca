@@ -73,6 +73,17 @@ export class ToolkitTasks {
 
   create(expectedTarget?: z.infer<typeof targetSchema>, taskId?: string): Promise<TaskHandle> {
     return this.#serial(async () => {
+      for (const [handle, task] of this.#tasks) {
+        if (taskId === handle.id) {
+          if (
+            expectedTarget &&
+            JSON.stringify(expectedTarget) !== JSON.stringify(task.record.target)
+          ) {
+            throw new Error('Existing task target differs')
+          }
+          return handle
+        }
+      }
       if (!this.#pendingCreate) {
         const snapshot = z
           .object({ store_id: z.string(), epoch: z.string(), raw_json: z.string() })
@@ -191,9 +202,6 @@ export class ToolkitTasks {
         task.record = taskSchema.parse(await this.#request(task.pending))
         task.pending = undefined
       }
-      if (task.record.state === state && task.record.released === released) {
-        return
-      }
       task.pending = {
         op: 'task-update',
         request_id: randomUUID(),
@@ -203,7 +211,7 @@ export class ToolkitTasks {
         store_id: task.storeId,
         revision: task.record.revision,
         state,
-        released
+        released: task.record.released || released
       }
       task.record = taskSchema.parse(await this.#request(task.pending))
       task.pending = undefined

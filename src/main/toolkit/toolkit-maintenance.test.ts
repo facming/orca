@@ -16,6 +16,10 @@ it('blocks untrusted legacy claims, unknown leases and unreviewed upgrades', asy
   }
   try {
     expect((await maintenanceState(status, jobs)).maintenance.restore).toBe(true)
+    await mkdir(join(root, 'keys', 'released-task'), { recursive: true })
+    await writeFile(join(root, 'keys', 'released-task', 'key'), 'retained key')
+    expect((await maintenanceState(status, jobs)).maintenance.targetChange).toBe(false)
+    await rm(join(root, 'keys'), { recursive: true })
     await mkdir(jobs)
     await writeFile(join(jobs, 'forged.json'), '{"status":"complete","cleanup_verified":true}')
     expect((await maintenanceState(status, jobs)).maintenance.restore).toBe(false)
