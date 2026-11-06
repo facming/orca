@@ -9,6 +9,7 @@ import { toolkitDownloadLifecycle } from './toolkit-download-lifecycle'
 
 const commandSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('list') }).strict(),
+  z.object({ operation: z.literal('pause-all') }).strict(),
   z.object({ operation: z.literal('reconcile') }).strict(),
   z.object({ operation: z.literal('choose-folder') }).strict(),
   z
@@ -57,6 +58,7 @@ type Manager = {
     requestId: string
   }): Promise<unknown>
   action(id: string, action: string): Promise<unknown>
+  pauseAll(): Promise<void>
   close(): Promise<void>
 }
 type Engine = {
@@ -158,6 +160,10 @@ export function createToolkitDownloads(
       await manager.close()
       manager = undefined
       throw error
+    }
+    if (command.operation === 'pause-all') {
+      await manager.pauseAll()
+      return { paused: true }
     }
     if (command.operation === 'create') {
       if (!settings.downloads.enabled) {

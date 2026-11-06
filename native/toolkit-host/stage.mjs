@@ -7,6 +7,7 @@ import {
   chmodSync,
   existsSync
 } from 'node:fs'
+import { createRequire } from 'node:module'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
@@ -40,6 +41,10 @@ for (const name of [
   'modules/downloads/host-entry.cjs',
   'modules/downloads/host-browser.cjs',
   'remote-browser.cjs',
+  'host-tools.cjs',
+  'account-preferences.cjs',
+  'modules/accounts.cjs',
+  'modules/gpu-macos.cjs',
   'remote-runtime.cjs',
   'download-preferences.cjs',
   'modules/downloads/engine.cjs',
@@ -53,12 +58,21 @@ for (const name of [
 ]) {
   put(name, readFileSync(join(toolkit, name)))
 }
+const { fragment } = createRequire(import.meta.url)(join(toolkit, 'compose-ui.cjs'))
+const accounts = fragment('accounts.html')
+const accountMarkup = accounts.content.replace('<a href="/">← Orca Toolkit</a>', '')
 const panel = readFileSync(join(toolkit, 'configuration-panel.html'), 'utf8')
+  .replace('<!-- HOST_ACCOUNTS -->', accountMarkup)
+  .replace(
+    '/* HOST_ACCOUNTS_SCRIPT */',
+    `(()=>{const root=window.document.getElementById('host-accounts');const document={getElementById:id=>root.querySelector('#'+id),createElement:tag=>window.document.createElement(tag),get visibilityState(){return window.document.visibilityState;}};${accounts.script}})();`
+  )
+
 const script = panel.match(/<script nonce="__TOKEN__">([\s\S]*?)<\/script>/)[1]
 put('panel.js', script)
 put(
   'panel.html',
-  `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>Toolkit configuration</title>${panel.replace(
+  `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orca Toolkit</title><style>body{font:14px system-ui;margin:24px;line-height:1.5;color:CanvasText;background:Canvas;color-scheme:light dark}section{margin-block:24px}input,button{font:inherit;margin:4px;padding:6px}fieldset{margin-block:12px;min-width:0}pre,p{overflow-wrap:anywhere}progress{width:100%}nav{display:flex;flex-wrap:wrap;gap:12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card{border:1px solid GrayText;padding:12px}pre{white-space:pre-wrap}button:disabled{opacity:.5}#host-download-form{display:flex;flex-wrap:wrap;gap:8px;align-items:end}#host-download-form label{display:grid;gap:4px}#host-download-concurrency{width:5em}.top,.label{display:flex;justify-content:space-between;gap:12px}.window{margin-block:12px}.track{height:6px;background:ButtonFace}.fill{height:100%;background:Highlight}.badge{margin-inline-start:8px}details{margin-block:12px}</style>${panel.replace(
     /<script[\s\S]*?<\/script>/,
     '<script src="panel.js"></script>'
   )}`
@@ -72,6 +86,8 @@ contextBridge.exposeInMainWorld('orcaToolkitConfiguration',{call(input){
  const {operation='status',...args}=input;
  return ready.then(()=>ipcRenderer.invoke('toolkit:configuration:v1',{version:1,request:{op:operation==='confirm'?'import':operation,...args}}));
 }});
+ipcRenderer.on('toolkit:section:v1',(_event,section)=>{document.getElementById(section)?.scrollIntoView();});
+contextBridge.exposeInMainWorld('orcaToolkitTools',{call(input){return ready.then(()=>ipcRenderer.invoke('toolkit:tools:v1',input));}});
 contextBridge.exposeInMainWorld('orcaToolkitDownloads',{call(input){return ready.then(()=>ipcRenderer.invoke('toolkit:downloads:v1',input));}});\n`
 )
 execFileSync('/usr/bin/cc', [

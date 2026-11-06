@@ -6,6 +6,7 @@ import type { ConfigurationRequest, ToolkitAuthority } from './toolkit-authority
 import { maintenanceState } from './toolkit-maintenance'
 import { TOOLKIT_CONFIGURATION_METHOD } from './toolkit-authority'
 import { createMaintenanceApproval } from './toolkit-maintenance-approval'
+import { createToolkitTools } from './toolkit-tools'
 import { createToolkitDownloads } from './toolkit-downloads'
 import { createToolkitPanelContext } from './toolkit-panel-context'
 
@@ -13,13 +14,15 @@ let window: BrowserWindow | undefined
 let opening = false
 const channel = 'toolkit:configuration:v1'
 
-export async function openToolkitConfiguration(): Promise<void> {
-  if (
-    process.platform !== 'darwin' ||
-    process.env.ORCA_BACKGROUND_LAUNCH === '1' ||
-    window ||
-    opening
-  ) {
+export async function openToolkitConfiguration(
+  section = 'configuration-maintenance'
+): Promise<void> {
+  if (process.platform !== 'darwin' || process.env.ORCA_BACKGROUND_LAUNCH === '1' || opening) {
+    return
+  }
+  if (window) {
+    window.webContents.send('toolkit:section:v1', section)
+    window.show()
     return
   }
   opening = true
@@ -30,6 +33,7 @@ export async function openToolkitConfiguration(): Promise<void> {
     const { authority, root } = await loadToolkitAuthority(process.resourcesPath)
     const panel = await createToolkitMaintenanceWindow(authority, root)
     // This window is opened only by a user menu action; automated/background launches return above.
+    panel.webContents.send('toolkit:section:v1', section)
     panel.show()
   } catch {
     await dialog.showMessageBox({
@@ -65,7 +69,9 @@ export async function createToolkitMaintenanceWindow(
   }
   const panelURL = pathToFileURL(join(root, 'panel.html')).href
   const panel = new BrowserWindow({
-    title: 'Toolkit configuration',
+    title: 'Orca Toolkit',
+    width: 1000,
+    height: 800,
     show: false,
     webPreferences: {
       preload: join(root, 'preload.cjs'),
@@ -77,12 +83,15 @@ export async function createToolkitMaintenanceWindow(
     }
   })
   window = panel
+  let tools: ReturnType<typeof createToolkitTools> | undefined
   let downloads: ReturnType<typeof createToolkitDownloads> | undefined
   let context: ReturnType<typeof createToolkitPanelContext> | undefined
   let preview: Record<string, unknown> | undefined
   const revoke = (): void => {
     void downloads?.close().catch(() => undefined)
     downloads = undefined
+    tools?.close()
+    tools = undefined
     authority.revokeAll()
     context = undefined
     inventoryContext = undefined
@@ -103,6 +112,7 @@ export async function createToolkitMaintenanceWindow(
   panel.webContents.once('did-finish-load', () => {
     if (active()) {
       downloads = createToolkitDownloads(authority, root, panel)
+      tools = createToolkitTools(authority, root)
       inventoryContext = authority.openContext(true)
       context = createToolkitPanelContext(
         authority,
@@ -124,6 +134,7 @@ export async function createToolkitMaintenanceWindow(
     revoke()
     ipcMain.removeHandler(channel)
     ipcMain.removeHandler('toolkit:downloads:v1')
+    ipcMain.removeHandler('toolkit:tools:v1')
     app.removeListener('before-quit', revoke)
     window = undefined
   })
@@ -139,6 +150,18 @@ export async function createToolkitMaintenanceWindow(
       throw new Error('Unauthorized Toolkit download source')
     }
     return downloads.call(input)
+  })
+  ipcMain.handle('toolkit:tools:v1', async (event, input: unknown) => {
+    if (
+      !tools ||
+      !active() ||
+      event.sender !== panel.webContents ||
+      event.senderFrame !== panel.webContents.mainFrame ||
+      event.senderFrame.url !== panelURL
+    ) {
+      throw new Error('Unauthorized Toolkit tools source')
+    }
+    return tools.call(input)
   })
   ipcMain.handle(channel, async (event, input: unknown) => {
     if (
