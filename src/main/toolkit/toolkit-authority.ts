@@ -29,7 +29,15 @@ const operations = new Set(['status', 'read', 'patch', 'preview', 'import', 'bac
 export class ToolkitAuthority {
   readonly instance = randomUUID()
   #generation = 0
-  #contexts = new Map<unknown, { generation: number; controllers: Set<AbortController> }>()
+  #contexts = new Map<
+    unknown,
+    {
+      generation: number
+      controllers: Set<AbortController>
+      task: boolean
+      lifetime: AbortController
+    }
+  >()
   #grants = new Map<unknown, () => boolean>()
   #handler: Handler
 
@@ -42,15 +50,25 @@ export class ToolkitAuthority {
     })
   }
 
-  openContext(): ToolkitContext {
+  openContext(task = false): ToolkitContext {
     const context = Object.freeze({ instance: this.instance, generation: ++this.#generation })
-    this.#contexts.set(context, { generation: this.#generation, controllers: new Set() })
+    this.#contexts.set(context, {
+      generation: this.#generation,
+      controllers: new Set(),
+      task,
+      lifetime: new AbortController()
+    })
     return context
+  }
+
+  contextSignal(context: unknown): AbortSignal {
+    return this.#contexts.get(context)?.lifetime.signal ?? AbortSignal.abort()
   }
 
   revoke(context: unknown): void {
     const record = this.#contexts.get(context)
     this.#contexts.delete(context)
+    record?.lifetime.abort()
     for (const controller of record?.controllers ?? []) {
       controller.abort()
     }
@@ -81,7 +99,11 @@ export class ToolkitAuthority {
     try {
       const candidate = envelopeSchema.parse(structuredClone(input))
       envelope = { version: 1, request: this.adapter.validate(candidate.request) }
-      if (!operations.has(envelope.request.op)) {
+      if (
+        !(record.task
+          ? ['read', 'status', 'task-create', 'task-update'].includes(envelope.request.op)
+          : operations.has(envelope.request.op))
+      ) {
         return denied()
       }
     } catch {

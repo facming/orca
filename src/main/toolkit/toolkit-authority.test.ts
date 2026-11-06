@@ -49,7 +49,9 @@ describe('synthetic Host context authorization (not signed Host acceptance)', ()
     for (const input of [
       { ...envelope, session: context },
       { version: 1, request: { op: 'status', pluginKey: 'toolkit' } },
-      { version: 1, request: { op: 'lease-acquire' } }
+      { version: 1, request: { op: 'lease-acquire' } },
+      { version: 1, request: { op: 'task-create' } },
+      { version: 1, request: { op: 'task-update' } }
     ]) {
       expect((await authority.call(context, TOOLKIT_CONFIGURATION_METHOD, input, approve)).ok).toBe(
         false

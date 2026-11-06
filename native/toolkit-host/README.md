@@ -23,7 +23,8 @@ compiles the addon, copies the closed Toolkit dependency set, and generates the
 Host panel/preload and manifest. It installs nothing. `ORCA_TOOLKIT_HOST_STAGE`
 is an optional electron-builder input, never a runtime admission override.
 Nested signing changes bytes: regenerate the manifest after nested signing and
-before the outer application seal; release pipeline integration remains open.
+before the outer application seal; the custom signer now performs this sequence.
+Formal end-to-end signed packaging acceptance remains open.
 
 The smoke runs an actual ordinary worker using the separate Node executable and
 checks IPC, commands, absent RUN_AS_NODE env and private API discovery denial.
@@ -33,3 +34,7 @@ main-runtime fuses. Non-macOS native calls fail closed.
 See [implementation, tests and remaining risks](../../docs/toolkit-host-7b7.md).
 Formal signing, complete runtime separation and real cross-UID acceptance remain
 **RELEASE BLOCKED**. No production enrollment is enabled by staging.
+
+## 7B-8 signing order
+
+`seal.mjs STAGE_ROOT "Developer ID Application: …"` signs nested worker/addon, then regenerates and verifies the closed manifest. For disposable tests only, pass `- --test-only`. The custom macOS app signer now runs this before outer signing and excludes this already-signed subtree from re-signing, then verifies the manifest again. No enrollment is performed. Main runtime fuses, remaining entry points and entitlements are still release blockers. See [7B-8 evidence and limitations](../../docs/toolkit-host-7b8.md).

@@ -1,9 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
-import { z } from 'zod'
 import { pathToFileURL } from 'node:url'
 import { loadToolkitAuthority } from './toolkit-bundle'
 import type { ConfigurationRequest } from './toolkit-authority'
+import { maintenanceState } from './toolkit-maintenance'
+import { TOOLKIT_CONFIGURATION_METHOD } from './toolkit-authority'
+import { createMaintenanceApproval } from './toolkit-maintenance-approval'
 import { createToolkitPanelContext } from './toolkit-panel-context'
 
 let window: BrowserWindow | undefined
@@ -25,6 +27,22 @@ export async function openToolkitConfiguration(): Promise<void> {
       throw new Error('RELEASE BLOCKED: a sealed packaged Host is required')
     }
     const { authority, root } = await loadToolkitAuthority(process.resourcesPath)
+    let inventoryContext: ReturnType<typeof authority.openContext> | undefined
+    const inspect = async () => {
+      const reply = await authority.call(
+        inventoryContext,
+        TOOLKIT_CONFIGURATION_METHOD,
+        { version: 1, request: { op: 'status' } },
+        async () => true
+      )
+      if (!reply.ok) {
+        throw new Error(reply.error)
+      }
+      return maintenanceState(
+        reply.result,
+        join(app.getPath('home'), 'Library/Application Support/OrcaTools/downloads/jobs')
+      )
+    }
     const panelURL = pathToFileURL(join(root, 'panel.html')).href
     const panel = new BrowserWindow({
       title: 'Toolkit configuration',
@@ -44,6 +62,7 @@ export async function openToolkitConfiguration(): Promise<void> {
     const revoke = (): void => {
       authority.revokeAll()
       context = undefined
+      inventoryContext = undefined
       preview = undefined
     }
     const active = (): boolean =>
@@ -60,21 +79,19 @@ export async function openToolkitConfiguration(): Promise<void> {
     panel.webContents.on('render-process-gone', revoke)
     panel.webContents.once('did-finish-load', () => {
       if (active()) {
+        inventoryContext = authority.openContext(true)
         context = createToolkitPanelContext(
           authority,
           panel.webContents,
           panelURL,
-          async (request) => {
-            if (
-              request.op === 'import' &&
-              (!preview ||
-                request.preview_id !== preview.preview_id ||
-                JSON.stringify(request.hashes) !== JSON.stringify(preview.hashes))
-            ) {
-              return false
-            }
-            return approve(panel, request)
-          }
+          createMaintenanceApproval(
+            inspect,
+            (request) => approve(panel, request),
+            (request) =>
+              !!preview &&
+              request.preview_id === preview.preview_id &&
+              JSON.stringify(request.hashes) === JSON.stringify(preview.hashes)
+          )
         )
       }
     })
@@ -102,6 +119,9 @@ export async function openToolkitConfiguration(): Promise<void> {
       if (!reply.ok) {
         throw new Error(reply.error)
       }
+      if (reply.result?.state && !reply.result.raw_json) {
+        return inspect()
+      }
       return reply.result
     })
     try {
@@ -125,28 +145,18 @@ export async function openToolkitConfiguration(): Promise<void> {
 }
 
 async function approve(panel: BrowserWindow, request: ConfigurationRequest): Promise<boolean> {
-  // Legacy task ownership has not moved into main; do not bypass its target-change guard.
-  if (['import', 'restore'].includes(request.op)) {
-    return false
-  }
-  if (request.op === 'patch' && request.namespace === 'settings') {
-    const patch = z.array(z.object({ path: z.array(z.string()) })).parse(request.patch)
-    if (
-      patch.some(
-        ({ path }) =>
-          path[0] === 'downloads' &&
-          (path.length === 1 || ['environment', 'sshHost', 'sshUser', 'sshPort'].includes(path[1]))
-      )
-    ) {
-      return false
-    }
-  }
   if (['read', 'status', 'preview'].includes(request.op)) {
     return true
   }
   const result = await dialog.showMessageBox(panel, {
     type: 'question',
     message: `Allow Toolkit configuration ${request.op}?`,
+    detail:
+      request.op === 'import'
+        ? `Confirm preview ${String(request.preview_id)}. Both selected documents will be imported.`
+        : request.op === 'restore'
+          ? `Restore ${String(request.backup_id)}. Both documents will be replaced; other editors must reload.`
+          : 'Apply this configuration operation through the Orca main process.',
     buttons: ['Cancel', 'Allow'],
     defaultId: 0,
     cancelId: 0,
