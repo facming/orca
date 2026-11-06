@@ -2,11 +2,14 @@ import { app, shell } from 'electron'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { runProcess } from '@orca/process-host'
+import { workbenchCommand } from './toolkit-workbench'
 import { TOOLKIT_CONFIGURATION_METHOD, type ToolkitAuthority } from './toolkit-authority'
 import { createToolkitDownloadBrowser } from './toolkit-download-browser'
 
 const accountId = z.string().min(1).max(200)
 const commands = z.discriminatedUnion('operation', [
+  z.object({ operation: z.literal('workbench'), command: workbenchCommand }).strict(),
   z.object({ operation: z.literal('accounts') }).strict(),
   z.object({ operation: z.literal('accounts-refresh') }).strict(),
   z
@@ -61,6 +64,29 @@ export function createToolkitTools(authority: ToolkitAuthority, root: string) {
             throw new Error('GPU tools are disabled in settings')
           }
           await shell.openExternal('http://127.0.0.1:18773/')
+          return { opened: true }
+        }
+        if (command.operation === 'workbench' && command.command.action === 'edit') {
+          const location = z.object({ path: z.string(), directory: z.literal(false) }).parse(
+            await service.call({
+              operation: 'workbench',
+              command: { ...command.command, action: 'location' }
+            })
+          )
+          if (closed) {
+            throw new Error('Toolkit session revoked')
+          }
+          const result = await runProcess({
+            program: '/usr/bin/open',
+            args: ['-a', 'TextEdit', location.path],
+            timeoutMs: 10000,
+            maxOutputBytes: 4096
+          })
+          if (result.code !== 0) {
+            throw new Error(
+              'Could not open TextEdit. Check the local file association or permissions.'
+            )
+          }
           return { opened: true }
         }
         return service.call(command)

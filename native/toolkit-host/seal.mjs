@@ -15,6 +15,7 @@ const required = [
   'modules/downloads/host-browser.cjs',
   'remote-browser.cjs',
   'host-tools.cjs',
+  'host-workbench.cjs',
   'account-preferences.cjs',
   'modules/accounts.cjs',
   'modules/gpu-macos.cjs',

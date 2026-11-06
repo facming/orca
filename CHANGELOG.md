@@ -1,3 +1,10 @@
+## 2026-11-06 — Toolkit macOS workbench 7B-12 (Draft / RELEASE BLOCKED)
+
+- Add a Project workbench Host menu and strict finite project/task/workflow command schemas; preserve exact-window/main-frame authority.
+- Stage and seal the companion Toolkit workbench, with native project browsing, TextEdit entry, task controls, ComfyUI execution and download handoff. No ordinary plugin RPC expansion.
+- Record actual hidden Electron/local-file validation separately from synthetic engines and unperformed hardware acceptance. macOS is the product target; Windows code remains without parity obligations.
+- See [features, remaining risks and deferred installation](docs/toolkit-host-7b12.md) and [validation evidence](docs/toolkit-host-7b12-validation.txt). No production installation or migration.
+
 ## 2026-11-06 — Toolkit product regression 7B-11 (RELEASE BLOCKED)
 
 - Add explicit Host menu routes for accounts, downloads, GPU/native status and settings; ordinary plugin commands cannot claim privileged work succeeded.

@@ -5,6 +5,12 @@ export function toolkitMenu(): Electron.MenuItemConstructorOptions {
     label: 'Orca Toolkit',
     submenu: [
       {
+        label: 'Project workbench…',
+        click: () => {
+          void openToolkitConfiguration('host-workbench')
+        }
+      },
+      {
         label: 'Accounts…',
         click: () => {
           void openToolkitConfiguration('host-accounts')
