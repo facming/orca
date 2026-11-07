@@ -24,10 +24,27 @@ type Browser = {
   remember(environment: string, input: { folder?: string; source?: string }): Promise<void>
 }
 
-export function createToolkitDownloadBrowser(authority: ToolkitAuthority, root: string) {
+export type ToolkitRuntime = {
+  platform: string
+  cli: string
+  ssh: string
+  keygen: string
+  home: string
+  userDataPath: string
+  loadSdk: () => unknown
+  childEnv: Record<string, string>
+  development?: boolean
+  endpointTrustFile?: string
+}
+
+export function createToolkitDownloadBrowser(
+  authority: ToolkitAuthority,
+  root: string,
+  override?: ToolkitRuntime
+) {
   const context = authority.openContext()
   const load = createRequire(join(root, 'manifest.json'))
-  const runtime = {
+  const runtime = override ?? {
     platform: 'darwin',
     cli: join(process.resourcesPath, 'bin/orca'),
     ssh: '/usr/bin/ssh',

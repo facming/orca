@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { runProcess } from '@orca/process-host'
 import { workbenchCommand } from './toolkit-workbench'
 import { TOOLKIT_CONFIGURATION_METHOD, type ToolkitAuthority } from './toolkit-authority'
-import { createToolkitDownloadBrowser } from './toolkit-download-browser'
+import { createToolkitDownloadBrowser, type ToolkitRuntime } from './toolkit-download-browser'
 
 const accountId = z.string().min(1).max(200)
 const commands = z.discriminatedUnion('operation', [
@@ -25,9 +25,13 @@ const commands = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('gpu-open') }).strict()
 ])
 
-export function createToolkitTools(authority: ToolkitAuthority, root: string) {
+export function createToolkitTools(
+  authority: ToolkitAuthority,
+  root: string,
+  runtime?: ToolkitRuntime
+) {
   const context = authority.openContext()
-  const browsing = createToolkitDownloadBrowser(authority, root)
+  const browsing = createToolkitDownloadBrowser(authority, root, runtime)
   const readSettings = async () => {
     const reply = await authority.call(
       context,

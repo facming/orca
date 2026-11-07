@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { TOOLKIT_CONFIGURATION_METHOD, type ToolkitAuthority } from './toolkit-authority'
-import { createToolkitDownloadBrowser } from './toolkit-download-browser'
+import { createToolkitDownloadBrowser, type ToolkitRuntime } from './toolkit-download-browser'
 import { ToolkitTasks } from './toolkit-tasks'
 import { toolkitDownloadLifecycle } from './toolkit-download-lifecycle'
 
@@ -82,10 +82,11 @@ type Engine = {
 export function createToolkitDownloads(
   authority: ToolkitAuthority,
   root: string,
-  panel: BrowserWindow
+  panel: BrowserWindow,
+  runtime?: ToolkitRuntime
 ) {
   const tasks = new ToolkitTasks(authority)
-  const browsing = createToolkitDownloadBrowser(authority, root)
+  const browsing = createToolkitDownloadBrowser(authority, root, runtime)
   const context = authority.openContext(true)
   let manager: Manager | undefined
   let targetKey = ''

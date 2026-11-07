@@ -8,6 +8,7 @@ import { TOOLKIT_CONFIGURATION_METHOD } from './toolkit-authority'
 import { createMaintenanceApproval } from './toolkit-maintenance-approval'
 import { createToolkitTools } from './toolkit-tools'
 import { createToolkitDownloads } from './toolkit-downloads'
+import type { ToolkitRuntime } from './toolkit-download-browser'
 import { createToolkitPanelContext } from './toolkit-panel-context'
 
 let window: BrowserWindow | undefined
@@ -49,7 +50,8 @@ export async function openToolkitConfiguration(
 
 export async function createToolkitMaintenanceWindow(
   authority: ToolkitAuthority,
-  root: string
+  root: string,
+  runtime?: ToolkitRuntime
 ): Promise<BrowserWindow> {
   let inventoryContext: ReturnType<typeof authority.openContext> | undefined
   const inspect = async () => {
@@ -111,8 +113,8 @@ export async function createToolkitMaintenanceWindow(
   panel.webContents.on('render-process-gone', revoke)
   panel.webContents.once('did-finish-load', () => {
     if (active()) {
-      downloads = createToolkitDownloads(authority, root, panel)
-      tools = createToolkitTools(authority, root)
+      downloads = createToolkitDownloads(authority, root, panel, runtime)
+      tools = createToolkitTools(authority, root, runtime)
       inventoryContext = authority.openContext(true)
       context = createToolkitPanelContext(
         authority,
