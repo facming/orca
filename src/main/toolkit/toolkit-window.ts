@@ -72,7 +72,10 @@ export async function createToolkitMaintenanceWindow(
   const panelURL = pathToFileURL(join(root, 'panel.html')).href
   const panel = new BrowserWindow({
     title: 'Orca Toolkit',
-    width: 1000,
+    width: 1120,
+    minWidth: 480,
+    minHeight: 520,
+    backgroundColor: '#f6f7fb',
     height: 800,
     show: false,
     webPreferences: {
@@ -92,7 +95,7 @@ export async function createToolkitMaintenanceWindow(
   const revoke = (): void => {
     void downloads?.close().catch(() => undefined)
     downloads = undefined
-    tools?.close()
+    void tools?.close()
     tools = undefined
     authority.revokeAll()
     context = undefined
@@ -143,7 +146,7 @@ export async function createToolkitMaintenanceWindow(
       return
     }
     closing = true
-    void (downloads?.close() ?? Promise.resolve())
+    void Promise.all([downloads?.close(), tools?.close()])
       .then(() => {
         saved = true
         panel.close()

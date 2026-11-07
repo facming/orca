@@ -78,7 +78,7 @@ const script = panel.match(/<script nonce="__TOKEN__">([\s\S]*?)<\/script>/)[1]
 put('panel.js', script)
 put(
   'panel.html',
-  `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orca Toolkit</title><style>body{font:14px system-ui;margin:24px;line-height:1.5;color:CanvasText;background:Canvas;color-scheme:light dark}section{margin-block:24px}input,button,select,textarea{font:inherit;margin:4px;padding:6px}fieldset{margin-block:12px;min-width:0}#host-workbench form>label,#wb-parameter-fields label{display:grid;gap:4px;margin-block:12px}#host-workbench form>label.wb-consent{display:flex;align-items:center}#host-workbench input:not([type=checkbox]),#host-workbench select,#host-workbench textarea{max-width:100%;box-sizing:border-box}#host-workbench pre{max-height:360px;overflow:auto}#wb-entries{max-height:300px;overflow:auto}pre,p{overflow-wrap:anywhere}progress{width:100%}nav{display:flex;flex-wrap:wrap;gap:12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.card{border:1px solid GrayText;padding:12px}pre{white-space:pre-wrap}button:disabled{opacity:.5}#host-download-form{display:flex;flex-wrap:wrap;gap:8px;align-items:end}#host-download-form label{display:grid;gap:4px}#host-download-concurrency{width:5em}.top,.label{display:flex;justify-content:space-between;gap:12px}.window{margin-block:12px}.track{height:6px;background:ButtonFace}.fill{height:100%;background:Highlight}.badge{margin-inline-start:8px}details{margin-block:12px}</style>${panel.replace(
+  `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orca Toolkit</title><style>${readFileSync(join(toolkit, 'host-theme.css'), 'utf8')}</style>${panel.replace(
     /<script[\s\S]*?<\/script>/,
     '<script src="panel.js"></script>'
   )}`
@@ -92,7 +92,7 @@ contextBridge.exposeInMainWorld('orcaToolkitConfiguration',{call(input){
  const {operation='status',...args}=input;
  return ready.then(()=>ipcRenderer.invoke('toolkit:configuration:v1',{version:1,request:{op:operation==='confirm'?'import':operation,...args}}));
 }});
-ipcRenderer.on('toolkit:section:v1',(_event,section)=>{document.getElementById(section)?.scrollIntoView();});
+ipcRenderer.on('toolkit:section:v1',(_event,section)=>{window.dispatchEvent(new CustomEvent('toolkit-section',{detail:section}));});
 contextBridge.exposeInMainWorld('orcaToolkitTools',{call(input){return ready.then(()=>ipcRenderer.invoke('toolkit:tools:v1',input));}});
 contextBridge.exposeInMainWorld('orcaToolkitDownloads',{call(input){return ready.then(()=>ipcRenderer.invoke('toolkit:downloads:v1',input));}});\n`
 )

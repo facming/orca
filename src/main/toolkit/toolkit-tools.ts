@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { runProcess } from '@orca/process-host'
+import { createToolkitClaudeLogin } from './toolkit-claude-login'
 import { workbenchCommand } from './toolkit-workbench'
 import { TOOLKIT_CONFIGURATION_METHOD, type ToolkitAuthority } from './toolkit-authority'
 import { createToolkitDownloadBrowser, type ToolkitRuntime } from './toolkit-download-browser'
@@ -20,6 +21,29 @@ const commands = z.discriminatedUnion('operation', [
     })
     .strict(),
   z.object({ operation: z.literal('accounts-disable'), accountId, disabled: z.boolean() }).strict(),
+  z.object({ operation: z.literal('accounts-remove'), accountId }).strict(),
+  z
+    .object({
+      operation: z.enum([
+        'accounts-login-start',
+        'accounts-login-status',
+        'accounts-login-cancel',
+        'accounts-login-open',
+        'accounts-login-copy'
+      ])
+    })
+    .strict(),
+  z
+    .object({
+      operation: z.literal('accounts-login-submit'),
+      code: z
+        .string()
+        .trim()
+        .min(1)
+        .max(4096)
+        .regex(/^[^\s\p{Cc}]+$/u)
+    })
+    .strict(),
   z.object({ operation: z.literal('gpu-status') }).strict(),
   z.object({ operation: z.literal('gpu-workflows') }).strict(),
   z.object({ operation: z.literal('gpu-open') }).strict()
@@ -54,13 +78,16 @@ export function createToolkitTools(
     readSettings,
     dataDir: join(app.getPath('home'), 'Library/Application Support/OrcaTools')
   })
+  const login = createToolkitClaudeLogin(browsing.runtime)
   let accountMutation = false
   let closed = false
   let tail: Promise<unknown> = Promise.resolve()
   return {
     call(input: unknown) {
       const command = commands.parse(input)
-      const mutation = ['accounts-select', 'accounts-disable'].includes(command.operation)
+      const mutation = ['accounts-select', 'accounts-disable', 'accounts-remove'].includes(
+        command.operation
+      )
       if (mutation && accountMutation) {
         return Promise.reject(new Error('An account change is in progress. Refresh shortly.'))
       }
@@ -70,6 +97,38 @@ export function createToolkitTools(
       const result = tail.then(async () => {
         if (closed) {
           throw new Error('Toolkit session revoked')
+        }
+        if (command.operation.startsWith('accounts-login-')) {
+          const settings = await readSettings()
+          if (command.operation === 'accounts-login-cancel') {
+            return login.cancel()
+          }
+          if (!settings.accounts.enabled) {
+            await login.cancel()
+            throw new Error('Enable accounts in Host settings first.')
+          }
+          if (command.operation === 'accounts-login-start') {
+            return login.start(settings.accounts.environment)
+          }
+          if (command.operation === 'accounts-login-submit') {
+            await login.poll(settings.accounts.environment)
+            return login.submit(command.code)
+          }
+          if (command.operation === 'accounts-login-copy') {
+            await login.poll(settings.accounts.environment)
+            return login.copy()
+          }
+          if (command.operation === 'accounts-login-open') {
+            await login.poll(settings.accounts.environment)
+            return login.open()
+          }
+          return login.poll(settings.accounts.environment)
+        }
+        if (
+          mutation &&
+          ['starting', 'waiting', 'verifying', 'cancelling'].includes(login.status().phase)
+        ) {
+          throw new Error('Finish or cancel Claude sign-in before changing accounts.')
         }
         if (command.operation === 'gpu-open') {
           if (!(await readSettings()).gpu.enabled) {
@@ -156,8 +215,9 @@ export function createToolkitTools(
       tail = result.catch(() => undefined)
       return result
     },
-    close() {
+    async close() {
       closed = true
+      await login.close()
       service.close()
       browsing.close()
       authority.revoke(context)
