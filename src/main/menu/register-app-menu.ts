@@ -1,4 +1,5 @@
 import { BrowserWindow, Menu, app } from 'electron'
+import { toolkitMenu } from '../toolkit/toolkit-menu'
 import {
   formatKeybindingList,
   getEffectiveKeybindingsForAction,
@@ -279,6 +280,7 @@ function buildAndApplyMenu(options: RegisterAppMenuOptions): void {
   const helpMenu: Electron.MenuItemConstructorOptions = {
     label: translateMain('menu.help', 'Help'),
     submenu: [
+      ...(isMac ? [toolkitMenu()] : []),
       crashReportItem,
       { type: 'separator' },
       featureTourItem,

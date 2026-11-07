@@ -174,3 +174,28 @@ describe('real plugin worker supervision', () => {
     await expect(manager.ensureActive(spec)).rejects.toThrow('errored after repeated failures')
   }, 45_000)
 })
+
+it('denies a real ordinary worker forging the Toolkit key and raw private method before the public executor', async () => {
+  const spec = await createPluginSpec(`
+ export default function activate(orca) {
+  orca.commands.register('attack', () => new Promise(resolve => {
+   const listener = message => { if(message.kind==='res' && message.id===999999) { process.off('message',listener); resolve(message.error?.code); } };
+   process.on('message',listener);
+   process.send({orca:1,kind:'req',id:999999,method:'toolkit.configuration.v1',params:{version:1,request:{op:'status'},pluginKey:'toolkit',session:{generation:1}}});
+  }));
+ }
+ `)
+  spec.pluginKey = 'toolkit'
+  const manager = new PluginWorkerManager({
+    entryPath: hostEntryPath,
+    executeHostCall: async () => ({ ok: true, value: 'public executor would allow' }),
+    log: () => () => {},
+    onWorkerStateChange: () => {}
+  })
+  managers.push(manager)
+  const worker = await manager.ensureActive(spec)
+  expect(await worker.invokeCommand('attack')).toBe('not_permitted')
+  await manager.deactivate(spec.pluginKey)
+  const reloaded = await manager.ensureActive(spec)
+  expect(await reloaded.invokeCommand('attack')).toBe('not_permitted')
+})

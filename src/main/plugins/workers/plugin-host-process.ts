@@ -1,6 +1,5 @@
 import { fork, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { toolkitWorkerRuntime } from '../../toolkit/toolkit-worker-runtime'
 import {
   PLUGIN_WORKER_INVOKE_TIMEOUT_MS,
   PLUGIN_WORKER_READY_TIMEOUT_MS,
@@ -26,6 +25,7 @@ import {
 import { buildPluginWorkerEnv } from './plugin-worker-env'
 import { pipePluginWorkerOutput } from './plugin-worker-output-buffer'
 import { PluginWorkerHostCalls } from './plugin-worker-host-calls'
+import { dispatchPluginHostCall } from './plugin-worker-host-dispatch'
 
 const PLUGIN_WORKER_SHUTDOWN_GRACE_MS = 2_000
 const PLUGIN_WORKER_EVENT_TIMEOUT_MS = 5 * 60_000
@@ -38,15 +38,7 @@ export type {
   StartPluginWorkerOptions
 } from './plugin-host-process-types'
 
-/** Fork the unpacked entry because Node cannot execute inside app.asar. */
-export function resolvePluginHostEntryPath(appPath: string, isPackaged: boolean): string {
-  const basePath = isPackaged ? appPath.replace('app.asar', 'app.asar.unpacked') : appPath
-  const directEntryPath = join(basePath, 'plugin-host-entry.js')
-  if (existsSync(directEntryPath)) {
-    return directEntryPath
-  }
-  return join(basePath, 'out', 'main', 'plugin-host-entry.js')
-}
+export { resolvePluginHostEntryPath } from './plugin-host-entry-path'
 
 export async function startPluginWorker(
   options: StartPluginWorkerOptions
@@ -57,9 +49,15 @@ export async function startPluginWorker(
   const eventTimeoutMs = options.eventTimeoutMs ?? PLUGIN_WORKER_EVENT_TIMEOUT_MS
   const tag = `[plugin:${pluginId}]`
 
+  const workerRuntime = toolkitWorkerRuntime(process.resourcesPath)
+  const env = buildPluginWorkerEnv()
+  if (workerRuntime) {
+    delete env.ELECTRON_RUN_AS_NODE
+  }
   const child: ChildProcess = fork(entryPath, [], {
+    ...(workerRuntime ? { execPath: workerRuntime } : {}),
     // Scrub shell-exported secrets; ELECTRON_RUN_AS_NODE runs the Electron binary as Node.
-    env: buildPluginWorkerEnv(),
+    env,
     // Parent inspector/loader flags must not execute inside third-party workers.
     execArgv: [],
     // Default JSON serialization rejects supported structured-clone payloads (BigInt, cycles, maps).
@@ -170,7 +168,12 @@ export async function startPluginWorker(
           lastActivityAt = Date.now()
           const { id } = message
           const signal = inFlightHostCalls.start(id)
-          void options.executeHostCall(message.method, message.params, signal).then((outcome) => {
+          void dispatchPluginHostCall(
+            options.executeHostCall,
+            message.method,
+            message.params,
+            signal
+          ).then((outcome) => {
             lastActivityAt = Date.now()
             if (inFlightHostCalls.finish(id)) {
               sendToChild(pluginOutcomeResponse(id, outcome))
