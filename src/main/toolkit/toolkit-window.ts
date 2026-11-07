@@ -132,15 +132,52 @@ export async function createToolkitMaintenanceWindow(
       panel.webContents.send('toolkit:ready:v1')
     }
   })
+  let closing = false
+  let saved = false
+  const saveBeforeClose = (event: { preventDefault(): void }): void => {
+    if (saved) {
+      return
+    }
+    event.preventDefault()
+    if (closing) {
+      return
+    }
+    closing = true
+    void (downloads?.close() ?? Promise.resolve())
+      .then(() => {
+        saved = true
+        panel.close()
+      })
+      .catch(() => {
+        closing = false
+        void dialog.showMessageBox(panel, {
+          type: 'error',
+          message: 'Download state could not be saved',
+          detail: 'Check local storage, then close the development window again.'
+        })
+      })
+  }
+  let quitting = false
+  const saveBeforeQuit = (event: { preventDefault(): void }): void => {
+    if (saved) {
+      return
+    }
+    quitting = true
+    saveBeforeClose(event)
+  }
+  panel.on('close', saveBeforeClose)
   panel.once('closed', () => {
     revoke()
     ipcMain.removeHandler(channel)
     ipcMain.removeHandler('toolkit:downloads:v1')
     ipcMain.removeHandler('toolkit:tools:v1')
-    app.removeListener('before-quit', revoke)
+    app.removeListener('before-quit', saveBeforeQuit)
     window = undefined
+    if (quitting) {
+      app.quit()
+    }
   })
-  app.once('before-quit', revoke)
+  app.on('before-quit', saveBeforeQuit)
   ipcMain.handle('toolkit:downloads:v1', async (event, input: unknown) => {
     if (
       !downloads ||

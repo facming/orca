@@ -55,6 +55,7 @@ const {createRequire}=require('node:module');
 const {ToolkitAuthority}=require(${JSON.stringify(join(repo, 'src/main/toolkit/toolkit-authority.ts'))});
 const {createToolkitMaintenanceWindow}=require(${JSON.stringify(join(repo, 'src/main/toolkit/toolkit-window.ts'))});
 const load=createRequire(${JSON.stringify(join(stage, 'manifest.json'))});
+app.setName('Orca Toolkit Development');
 app.setPath('home',${JSON.stringify(state)});app.setPath('userData',${JSON.stringify(join(state, 'electron'))});
 if(process.env.ORCA_BACKGROUND_LAUNCH==='1')app.setActivationPolicy('prohibited');
 const authority=new ToolkitAuthority({validate:load('./config-service/commands.cjs').validate,createHostHandler:authorize=>{let tail=Promise.resolve();return (envelope,grant,signal)=>{const next=tail.then(async()=>{
@@ -65,6 +66,7 @@ const authority=new ToolkitAuthority({validate:load('./config-service/commands.c
 const runtime={platform:'darwin',home:${JSON.stringify(state)},userDataPath:${JSON.stringify(profile)},cli:${JSON.stringify(join(orcaApp, 'Contents/Resources/bin/orca'))},ssh:'/usr/bin/ssh',keygen:'/usr/bin/ssh-keygen',loadSdk:()=>load(${JSON.stringify(join(orcaApp, 'Contents/Resources/app.asar.unpacked/out/cli/runtime-client.js'))}),childEnv:{HOME:${JSON.stringify(state)},PATH:'/usr/bin:/bin',ORCA_USER_DATA_PATH:${JSON.stringify(profile)}},development:true,endpointTrustFile:${JSON.stringify(join(state, 'endpoints.json'))}};
 app.whenReady().then(async()=>{const panel=await createToolkitMaintenanceWindow(authority,${JSON.stringify(stage)},runtime);panel.setTitle('Orca Toolkit — Development');global.livePanel=panel;console.log('Live Toolkit ready');if(process.env.ORCA_BACKGROUND_LAUNCH!=='1')panel.show();});
 app.on('window-all-closed',()=>app.quit());
+process.on('SIGTERM',()=>app.quit());process.on('SIGINT',()=>app.quit());
 `
 await require('esbuild').build({
   stdin: { contents: source, resolveDir: repo, loader: 'ts' },
@@ -96,4 +98,11 @@ writeFileSync(
   `#!/bin/sh\nexec ${launchArgs.map(quote).join(' ')}\n`,
   { mode: 0o700 }
 )
+if (connectionArg) {
+  writeFileSync(
+    join(state, 'stop.command'),
+    `#!/bin/sh\nexec ${[python, join(toolkit, 'scripts/launch-live-host.py'), '--entry', join(state, 'main.cjs'), '--stop'].map(quote).join(' ')}\n`,
+    { mode: 0o700 }
+  )
+}
 console.log('Built live development Host:', join(state, 'launch.command'))

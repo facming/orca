@@ -92,6 +92,7 @@ export function createToolkitDownloads(
   let targetKey = ''
   let tail: Promise<unknown> = Promise.resolve()
   let closed = false
+  let closing: Promise<void> | undefined
   const perform = async (input: unknown) => {
     if (closed || tasks.signal.aborted) {
       throw new Error('Download session revoked')
@@ -204,11 +205,18 @@ export function createToolkitDownloads(
       return result
     },
     close() {
+      if (closing) {
+        return closing
+      }
       closed = true
-      tasks.revoke()
-      browsing.close()
-      authority.revoke(context)
-      return tail.then(() => manager?.close())
+      closing = Promise.all([tail, manager?.close()])
+        .then(() => manager?.close())
+        .finally(() => {
+          browsing.close()
+          tasks.revoke()
+          authority.revoke(context)
+        })
+      return closing
     }
   }
 }
