@@ -28,7 +28,6 @@ const commands = z.discriminatedUnion('operation', [
         'accounts-login-start',
         'accounts-login-status',
         'accounts-login-cancel',
-        'accounts-login-open',
         'accounts-login-copy'
       ])
     })
@@ -117,10 +116,6 @@ export function createToolkitTools(
           if (command.operation === 'accounts-login-copy') {
             await login.poll(settings.accounts.environment)
             return login.copy()
-          }
-          if (command.operation === 'accounts-login-open') {
-            await login.poll(settings.accounts.environment)
-            return login.open()
           }
           return login.poll(settings.accounts.environment)
         }

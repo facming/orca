@@ -1,4 +1,4 @@
-import { clipboard, shell } from 'electron'
+import { clipboard } from 'electron'
 import { z } from 'zod'
 import { isHostAccountSignInPage } from '../../shared/host-account-sign-in-types'
 import type { ToolkitRuntime } from './toolkit-download-browser'
@@ -29,27 +29,24 @@ export function createToolkitClaudeLogin(runtime: ToolkitRuntime) {
   let environment = ''
   let closed = false
   let opening = false
-  let browserError = false
   const active = () => !!flow && ['starting', 'waiting', 'verifying'].includes(flow.phase)
   const status = () => ({
     phase: flow?.phase ?? 'idle',
     needsCode: flow?.phase === 'waiting' && flow.prompt?.needsCode === true,
-    canOpen: flow?.phase === 'waiting' && !!flow.prompt,
+    canCopy: flow?.phase === 'waiting' && !!flow.prompt,
     message:
-      browserError && flow?.phase === 'waiting'
-        ? 'Browser could not open. Use Open sign-in page to retry.'
-        : flow?.phase === 'failed'
-          ? /took too long|timed out/i.test(flow.error ?? '')
-            ? 'Claude sign-in timed out. Start again; existing accounts are unchanged.'
-            : 'Claude sign-in failed or was denied. Retry sign-in on the connected VPS.'
-          : {
-              starting: 'Preparing an independent Claude account on the VPS…',
-              waiting:
-                'Open the sign-in page, or copy its link into your remote browser. Register or sign in, then paste Claude’s one-time authorization code below.',
-              verifying: 'The VPS is completing Claude sign-in…',
-              signedIn: 'Account added on the VPS. Use this account to select it for new sessions.',
-              cancelled: 'Sign-in cancelled. Existing accounts are unchanged.'
-            }[flow?.phase ?? 'cancelled']
+      flow?.phase === 'failed'
+        ? /took too long|timed out/i.test(flow.error ?? '')
+          ? 'Claude sign-in timed out. Start again; existing accounts are unchanged.'
+          : 'Claude sign-in failed or was denied. Retry sign-in on the connected VPS.'
+        : {
+            starting: 'Preparing an independent Claude account on the VPS…',
+            waiting:
+              'Copy the sign-in link and open it in the VPS browser through RustDesk. Complete authorization there, then paste Claude’s one-time code below.',
+            verifying: 'The VPS is completing Claude sign-in…',
+            signedIn: 'Account added on the VPS. Use this account to select it for new sessions.',
+            cancelled: 'Sign-in cancelled. Existing accounts are unchanged.'
+          }[flow?.phase ?? 'cancelled']
   })
   const call = async (method: string, params: unknown) => {
     if (!client) {
@@ -68,22 +65,6 @@ export function createToolkitClaudeLogin(runtime: ToolkitRuntime) {
     }
     runtimeId = reply._meta.runtimeId
     flow = flowSchema.parse(reply.result)
-    return status()
-  }
-  const open = async () => {
-    if (
-      !flow?.prompt ||
-      flow.phase !== 'waiting' ||
-      !isHostAccountSignInPage('claude', flow.prompt.url)
-    ) {
-      throw new Error('The VPS has not supplied a valid Claude sign-in page yet.')
-    }
-    try {
-      await shell.openExternal(flow.prompt.url)
-      browserError = false
-    } catch {
-      browserError = true
-    }
     return status()
   }
   return {
@@ -116,7 +97,6 @@ export function createToolkitClaudeLogin(runtime: ToolkitRuntime) {
         }
         environment = selectedEnvironment
         runtimeId = undefined
-        browserError = false
         await call('accounts.hostSignInStart', { provider: 'claude' })
         if (closed) {
           await this.cancel()
@@ -137,7 +117,6 @@ export function createToolkitClaudeLogin(runtime: ToolkitRuntime) {
       await call('accounts.hostSignInWait', { flowId: flow?.flowId, afterRevision: 0 })
       return status()
     },
-    open,
     copy() {
       if (
         !flow?.prompt ||

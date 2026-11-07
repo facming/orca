@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest'
 import type { ToolkitRuntime } from './toolkit-download-browser'
 import { createToolkitClaudeLogin } from './toolkit-claude-login'
 
-vi.mock('electron', () => ({ shell: { openExternal: vi.fn() }, clipboard: { writeText: vi.fn() } }))
+vi.mock('electron', () => ({ clipboard: { writeText: vi.fn() } }))
 
 function fixture(remote = true) {
   let phase = 'starting'
